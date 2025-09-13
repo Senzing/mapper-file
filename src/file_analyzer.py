@@ -84,6 +84,7 @@ class FileAnalyzer:
         self.root_node.node_desc = file_name
         self.root_node.node_type = file_type
         self.nodes = {"root": self.root_node}
+        self.top_value_count = 10
 
     def iterate_obj(self, prior_key, obj):
         if isinstance(obj, dict):
@@ -125,20 +126,23 @@ class FileAnalyzer:
             else:
                 self.nodes[attr_key].unique_values[value] += 1
 
+    def matches_filter(self, obj, filter_attr, filter_value):
+        """Check if object matches the filter criteria"""
+        parts = filter_attr.split(".")
+        current = obj
+
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return False
+
+        return str(current) == filter_value
+
     def generate(self, template):
-        header = [
-            "attribute",
-            "type",
-            "record_cnt",
-            "record_pct",
-            "unique_cnt",
-            "unique_pct",
-            "top_value1",
-            "top_value2",
-            "top_value3",
-            "top_value4",
-            "top_value5",
-        ]
+        header = ["attribute", "type", "record_cnt", "record_pct", "unique_cnt", "unique_pct"]
+        header.extend([f"top_value{i+1}" for i in range(self.top_value_count)])
+
         rows = []
         root_node = self.root_node
         parents = [{"node": root_node, "children": root_node.children.copy()}]
@@ -156,13 +160,14 @@ class FileAnalyzer:
             unique_cnt = len(next_node.unique_values)
             unique_pct = round(unique_cnt / record_cnt * 100, 2) if record_cnt else 0
 
-            top_values = [""] * 5
-            i = 0
-            for k, v in sorted(next_node.unique_values.items(), key=lambda v: v[1], reverse=True):
-                top_values[i] = f"{str(k)[0:50]} ({v})"
-                i += 1
-                if i == 5:
-                    break
+            top_values = [""] * self.top_value_count
+            if self.top_value_count:
+                i = 0
+                for k, v in sorted(next_node.unique_values.items(), key=lambda v: v[1], reverse=True):
+                    top_values[i] = f"{str(k)[0:50]} ({v})"
+                    i += 1
+                    if i == self.top_value_count:
+                        break
 
             if template == "report":
                 rows.append([attr_code, attr_type, record_cnt, record_pct, unique_cnt, unique_pct] + top_values)
@@ -287,6 +292,8 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--encoding", default="utf-8", help="file encoding")
     parser.add_argument("-o", "--output_file", help="the name of the csv output file")
     parser.add_argument("-p", "--python_file_name", help="optional name of the python code file")
+    parser.add_argument("--top_values", type=int, default=5, help="number of top values to display (default: 5)")
+    parser.add_argument("--filter", help="filter records by attribute=value (e.g. 'name=John')")
     args = parser.parse_args()
 
     if not args.input_file or not glob.glob(args.input_file):
@@ -310,6 +317,7 @@ if __name__ == "__main__":
     proc_start_time = time.time()
     shut_down = 0
     analyzer = FileAnalyzer(args.input_file, args.file_type)
+    analyzer.top_value_count = args.top_values
 
     try:
         file_num = 0
@@ -332,7 +340,13 @@ if __name__ == "__main__":
                 except csv.Error:
                     # Fallback: try tab delimiter
                     reader = csv.DictReader(file, delimiter="\t")
+            if args.filter:
+                filter_attr, filter_value = args.filter.split("=")
+
             for row in reader:
+                if args.filter and not analyzer.matches_filter(row, filter_attr, filter_value):
+                    continue
+
                 analyzer.record_count += 1
                 if analyzer.record_count % 10000 == 0:
                     print(f"{analyzer.record_count:,} rows read")
