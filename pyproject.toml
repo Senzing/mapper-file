@@ -1,6 +1,6 @@
 [project]
 name = "mapper-file"
-version = "0.5.14"
+version = "0.0.1"
 description = "mapper-file"
 authors = [{ name = "senzing", email = "support@senzing.com" }]
 readme = "README.md"
