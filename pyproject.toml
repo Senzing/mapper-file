@@ -106,6 +106,6 @@ disable = [
   "too-many-statements",
   "unspecified-encoding",
 ]
-good-names = ["mapper-equifax"]
+good-names = ["mapper-file"]
 ignore = ["__init__.py", "docs/source/conf.py"]
 notes = ["FIXME"]
