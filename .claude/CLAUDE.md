@@ -52,6 +52,7 @@ mypy src/
 ## CI Checks
 
 Pull requests trigger:
+
 - Pylint across Python 3.10, 3.11, 3.12, 3.13
 - Spellcheck via cspell
 
