@@ -1,115 +1,16 @@
 #! /usr/bin/env python3
 
+"""Senzing mapper template for transforming source data to Senzing JSON format."""
+
 import argparse
 import glob
 import hashlib
 import json
-import random
 import sys
 import time
-from datetime import datetime
-
-import numpy as np
+from collections import defaultdict
 
 # import csv or pandas here
-
-
-class Mapper:
-    """mapper class"""
-
-    def __init__(self):
-        """initialization method"""
-        self.load_reference_data()
-        self.stat_pack = {}
-
-    def map(self, raw_data):
-        """primary mapping function"""
-        json_list = []
-
-        # place any filters needed here
-
-        # place any calculations needed here
-
-        # initialize
-        json_data = SenzingJson()
-        json_data.set_data_source("")  # supply a value for this data source
-        json_data.set_record_id(raw_data[""])  # supply a 100% unique attribute
-        json_data.set_record_type("")  # should be PERSON or ORGANIZATION
-
-        # place column mappings here
-
-        self.capture_mapped_stats(json_data)
-        json_list.append(json_data)
-
-        return json_list
-
-    def load_reference_data(self):
-        """loading any conversion data needed"""
-        self.variant_data = {}
-        self.variant_data["GARBAGE_VALUES"] = ["NULL", "NUL", "N/A"]
-
-    def clean_value(self, raw_value):
-        """clean values from garbage data spacing issues etc"""
-        if not raw_value:
-            return ""
-        new_value = " ".join(str(raw_value).strip().split())
-        if new_value.upper() in self.variant_data["GARBAGE_VALUES"]:
-            return ""
-        return new_value
-
-    def not_empty(self, _val):
-        if _val is None:
-            return False
-        if isinstance(_val, (dict, list, np.ndarray)):
-            return len(_val) > 0
-        return len(str(_val)) > 0
-
-    def compute_record_hash(self, target_dict, attr_list=None):
-        """compute a hash to use for record_id if needed"""
-        if attr_list:
-            string_to_hash = ""
-            for attr_name in sorted(attr_list):
-                string_to_hash += (
-                    " ".join(str(target_dict[attr_name]).split()).upper()
-                    if attr_name in target_dict and target_dict[attr_name]
-                    else ""
-                ) + "|"
-        else:
-            string_to_hash = json.dumps(target_dict, sort_keys=True)
-        return hashlib.md5(bytes(string_to_hash, "utf-8")).hexdigest()
-
-    def ensure_list(self, _list):
-        return _list if _list is not None else []
-
-    def update_stat(self, cat1, cat2, example=None):
-        """update stats for analysis"""
-
-        if cat1 not in self.stat_pack:
-            self.stat_pack[cat1] = {}
-        if cat2 not in self.stat_pack[cat1]:
-            self.stat_pack[cat1][cat2] = {}
-            self.stat_pack[cat1][cat2]["count"] = 0
-
-        self.stat_pack[cat1][cat2]["count"] += 1
-        if example:
-            if "examples" not in self.stat_pack[cat1][cat2]:
-                self.stat_pack[cat1][cat2]["examples"] = []
-            if example not in self.stat_pack[cat1][cat2]["examples"]:
-                if len(self.stat_pack[cat1][cat2]["examples"]) < 5:
-                    self.stat_pack[cat1][cat2]["examples"].append(example)
-                else:
-                    self.stat_pack[cat1][cat2]["examples"][random.randint(2, 4)] = example
-
-    def capture_mapped_stats(self, json_data):
-        """capture mapped stats"""
-        data_source = json_data.get("DATA_SOURCE", "UNKNOWN_DSRC")
-        for key1 in json_data:
-            if isinstance(json_data[key1], list):
-                for subrecord in json_data[key1]:
-                    for key2 in subrecord:
-                        self.update_stat(data_source, key2, subrecord[key2])
-            else:
-                self.update_stat(data_source, key1, json_data[key1])
 
 
 class SenzingJson:
@@ -118,9 +19,9 @@ class SenzingJson:
     def __init__(self):
         """initialization method"""
         self._json = {"DATA_SOURCE": "", "RECORD_ID": "", "RECORD_TYPE": ""}
-        self.payload = []
         self.features = []
-        self.warnings = []
+        self.building_features = {}
+        self.payload = defaultdict(list)
 
     def set_data_source(self, _value):
         """set the data source"""
@@ -136,125 +37,164 @@ class SenzingJson:
         if _value:
             self._json["RECORD_TYPE"] = _value
 
-    def add_feature(self, *args, **kwargs):
-        """add a feature from tuples"""
-        feature = {}
-        label = kwargs.get("label") + "_" if kwargs.get("label") else ""
-        for _attr, _value in self.get_tuples(args):
-            if self.not_empty(_value):
-                _attr = label + _attr
-                if _attr not in feature:
-                    feature[_attr] = str(_value)
-                else:
-                    feature[_attr] += " " + str(_value)
-        self.features.append(feature)
+    def _clean_dict(self, _dict):
+        """clean dict values - strip strings and filter empty values"""
+        for k, v in _dict.items():
+            if isinstance(v, str):
+                v = v.strip()
+            if v:
+                yield k, v
 
-    def add_payload(self, *args):
-        """add payload attributes from tuples"""
-        for _attr, _value in self.get_tuples(args):
-            if self.not_empty(_value):
-                self.payload.append({_attr: _value})
+    def add_feature(self, name_or_dict, _dict=None):
+        """Add a feature - standalone or grouped.
 
-    def get_tuples(self, args):
-        tuples = [arg for arg in args if isinstance(arg, tuple)]
-        last_tuple = []
-        for arg in (arg for arg in args if not isinstance(arg, tuple)):
-            last_tuple.append(arg)
-            if len(last_tuple) == 2:
-                tuples.append(last_tuple)
-                last_tuple = []
-        if last_tuple:
-            self.warnings.append(f"{sys._getframe(1).f_code.co_name}{args} <- odd number of parameters!")
-        return tuples
+        Examples:
+            json_data.add_feature({"SSN_NUMBER": raw_data["ssn"]})
+            json_data.add_feature({"DATE_OF_BIRTH": raw_data["dob"]})
 
-    def not_empty(self, _value):
-        if _value is None:
-            return False
-        if isinstance(_value, (list, dict, np.ndarray)):
-            return len(_value) > 0
-        return len(str(_value).strip()) > 0
+            json_data.add_feature("name1", {"NAME_FIRST": raw_data["first_name"]})
+            json_data.add_feature("name1", {"NAME_LAST": raw_data["last_name"]})
 
-    def warning_count(self):
-        return len(self.warnings)
+            json_data.add_feature("addr1", {"ADDR_LINE1": raw_data["addr1"]})
+            json_data.add_feature("addr1", {"ADDR_CITY": raw_data["city"]})
+        """
+        if _dict is None:
+            # Standalone feature: add_feature({"KEY": value})
+            feature = dict(self._clean_dict(name_or_dict))
+            if feature:
+                self.features.append(feature)
+        else:
+            # Grouped feature: add_feature("group_name", {"KEY": value})
+            name = name_or_dict
+            if name not in self.building_features:
+                self.building_features[name] = {}
+                self.features.append(self.building_features[name])
+            for k, v in self._clean_dict(_dict):
+                if k in self.building_features[name]:
+                    raise ValueError(f"Attribute '{k}' already set for feature '{name}'")
+                self.building_features[name][k] = v
 
-    def get_warnings(self):
-        return "warning: " + "\nwarning: ".join(self.warnings)
+    def add_payload(self, _dict):
+        """add payload attributes
+
+        Example:
+            json_data.add_payload({"job_category": raw_data["job_category"]})
+            json_data.add_payload({"job_title": raw_data["job_title"]})
+        """
+        for k, v in self._clean_dict(_dict):
+            self.payload[k].append(str(v))
 
     def render(self):
-        self._json["FEATURES"] = self.features
-        for _data in self.payload:
-            for k, v in _data.items():
-                if self._json.get(k):
-                    if not isinstance(self._json[k], list):
-                        self._json[k] = list(_json[k])
-                    self._json[k].append(v)
-                else:
-                    self._json[k] = v
-
-        if not self._json["DATA_SOURCE"]:
-            self.warnings.append("data_source not set!")
-        if not self._json["RECORD_ID"]:
-            self.warnings.append("record_id not set!")
-        if not self._json["RECORD_TYPE"]:
-            self.warnings.append("record_type not set!")
-
+        """render the final JSON object with all features and payload"""
+        self._json["FEATURES"] = [f for f in self.features if f]
+        for k, v in self.payload.items():
+            self._json[k] = " | ".join(v) if len(v) > 1 else v[0]
         return self._json
+
+
+def compute_record_hash(target_dict, attr_list=None):
+    """compute a hash to use for record_id if needed"""
+    if attr_list:
+        string_to_hash = ""
+        for attr_name in sorted(attr_list):
+            string_to_hash += (
+                " ".join(str(target_dict[attr_name]).split()).upper()
+                if attr_name in target_dict and target_dict[attr_name]
+                else ""
+            ) + "|"
+    else:
+        string_to_hash = json.dumps(target_dict, sort_keys=True)
+    return hashlib.md5(bytes(string_to_hash, "utf-8")).hexdigest()
+
+
+def map_record(raw_data):
+    """primary mapping function"""
+    json_list = []
+
+    # place any filters needed here
+
+    # place any calculations needed here
+
+    # initialize
+    json_data = SenzingJson()
+    json_data.set_data_source("")  # supply a value for this data source
+    json_data.set_record_id(raw_data[""])  # supply a 100% unique attribute
+    json_data.set_record_type("")  # should be PERSON or ORGANIZATION
+
+    # place column mappings here
+    # json_data.add_feature({"ATTRIBUTE_NAME": raw_data.get("column_name")})
+    # json_data.add_feature("group1", {"ATTRIBUTE_NAME": raw_data.get("column_name")})
+
+    mapped_data = json_data.render()
+    json_list.append(mapped_data)
+
+    return json_list
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input_file", dest="input_file", help="the name of the input file")
+    parser.add_argument("input_file", help="the name of the input file")
     parser.add_argument("-o", "--output_file", dest="output_file", help="the name of the output file")
-    parser.add_argument("-l", "--log_file", dest="log_file", help="optional name of the statistics log file")
+    parser.add_argument(
+        "-s", "--start-line", dest="start_line", type=int, default=1, help="line number to start at (default: 1)"
+    )
     args = parser.parse_args()
 
-    if not args.input_file or not glob.glob(args.input_file):
-        print("\nPlease supply a valid input file specification on the command line\n")
-        sys.exit(1)
     file_list = glob.glob(args.input_file)
-
-    if not args.output_file:
-        print("\nPlease supply a valid output file name on the command line\n")
+    if not file_list:
+        print("\nNo files found matching the input file specification\n")
         sys.exit(1)
 
-    output_file = open(args.output_file, "w", encoding="utf-8")
+    if args.output_file:
+        output_file = open(args.output_file, "w", encoding="utf-8")
+    else:
+        output_file = None
 
     proc_start_time = time.time()
     shut_down = False
     input_row_count = 0
     output_row_count = 0
-    mapper = Mapper()
 
     try:
         file_num = 0
         for file_name in file_list:
             file_num += 1
             print(f"reading file {file_num} of {len(file_list)}: {file_name}")
+
             # open reader here
-            for row in reader:
-                for json_data in mapper.map(row):
-                    output_file.write(json.dumps(json_data) + "\n")
+
+            for row in reader:  # pylint: disable=undefined-variable
+                input_row_count += 1
+                if input_row_count < args.start_line:
+                    continue
+
+                for json_data in map_record(row):
+                    if output_file:
+                        output_file.write(json.dumps(json_data) + "\n")
+                    else:
+                        print(f"--- Record {input_row_count} ---")
+                        print(json.dumps(json_data, indent=4))
+                        response = input("Press Enter for next, 'r' to show raw source (Ctrl+C to abort): ")
+                        if response.lower() == "r":
+                            print("\nSource:")
+                            print(json.dumps(row, indent=4, default=str))
+                            input("\nPress Enter for next record (Ctrl+C to abort) ...")
                     output_row_count += 1
 
-                input_row_count += 1
                 if input_row_count % 10000 == 0:
                     print(f"{input_row_count} rows processed, {output_row_count} rows written")
+
             # close reader here
 
     except KeyboardInterrupt:
-        print("\nUSER INTERUPT! Shutting down ... (please wait)\n")
+        print("\nUSER INTERRUPT! Shutting down ... (please wait)\n")
         shut_down = True
 
     elapsed_mins = round((time.time() - proc_start_time) / 60, 1)
     run_status = ("completed in" if not shut_down else "aborted after") + f" {elapsed_mins} minutes"
     print(f"{input_row_count} rows processed, {output_row_count} rows written, {run_status}\n")
 
-    output_file.close()
-
-    # --write statistics file
-    if args.log_file:
-        with open(args.log_file, "w") as outfile:
-            json.dump(mapper.stat_pack, outfile, indent=4, sort_keys=True)
-        print("Mapping stats written to %s\n" % args.log_file)
+    if output_file:
+        output_file.close()
 
     sys.exit(0)
