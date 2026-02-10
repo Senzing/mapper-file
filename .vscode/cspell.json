@@ -11,6 +11,7 @@
     "Bolshaya",
     "bugtracker",
     "CCLA",
+    "codelist",
     "Chonmyong",
     "CODEOWNER",
     "constituancy",
@@ -22,6 +23,7 @@
     "DFAT",
     "esbenp",
     "FEDERATSII",
+    "FMXSR",
     "Federatsiya",
     "Hapjanggang",
     "htmlhelp",
@@ -40,6 +42,7 @@
     "mypy",
     "namefull",
     "nomino",
+    "numpy",
     "OFAC",
     "Okhotny",
     "OMGY",
@@ -47,6 +50,7 @@
     "PERSONNE",
     "PHARMA",
     "Phyongchon",
+    "prettytable",
     "Presnenskaya",
     "psutil",
     "pylint",
@@ -65,6 +69,8 @@
     "SDGT",
     "Senzing",
     "serializinghtml",
+    "Socrata",
+    "Spector",
     "setuptools",
     "shellcheck",
     "sphinxcontrib",
@@ -88,6 +94,7 @@
     ".git/**",
     ".mypy_cache/**",
     "development-requirements.txt",
-    "documentation-requirements.txt"
+    "documentation-requirements.txt",
+    "src/sz_default_config.json"
   ]
 }
