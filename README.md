@@ -323,29 +323,25 @@ python src/file_analyzer.py data.csv -o schema.csv   # CSV
 
 ```
 usage: file_analyzer.py [-h] [-t FILE_TYPE] [-e ENCODING] [-o OUTPUT_FILE]
-                        [-s SAMPLES] [-p PYTHON_FILE_NAME]
                         [--top_values TOP_VALUES] [--filter FILTER]
                         [--group_by GROUP_BY] [--enumerate ENUMERATE]
-                        [--detect-codes] [--data-path DATA_PATH] [--auto]
+                        [--detect-codes] [-p PYTHON_FILE_NAME]
                         input_file
 
 positional arguments:
-  input_file              Input file path (supports CSV, JSON, JSONL, Parquet, XML)
+  input_file              Input file or directory path
 
 options:
   -h, --help              Show help message
   -t, --file_type         File type (auto-detected if not specified)
   -e, --encoding          File encoding (default: utf-8)
   -o, --output_file       Save schema to file (.md or .csv)
-  -s, --samples           Generate sample records file
   -p, --python_file_name  Generate Python mapper script
   --top_values            Number of top values to display (default: 5)
   --filter                Filter records: 'attribute=value'
   --group_by              Group by attribute: 'attr' or 'attr=value'
   --enumerate             Enumerate code values (requires -o)
   --detect-codes          Auto-detect and enumerate code lists
-  --data-path             For JSON/XML: path to array containing data records
-  --auto                  For JSON/XML: auto-select largest array without prompting
 ```
 
 ## Development

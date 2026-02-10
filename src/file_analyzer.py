@@ -334,6 +334,10 @@ class Node:
         self.node_type = None
         self.children = []
         self.description = None  # For field descriptions (e.g., from Socrata meta)
+        self.record_count = 0
+        self.unique_values = {}
+        self.table_context = None
+        self.table_record_count = 0
 
     def add_child(self, obj):
         """Add a child node to this node."""
@@ -644,10 +648,9 @@ class FileAnalyzer:
         # Handle different types of values
         if isinstance(current, list):
             return current
-        elif current is not None:
+        if current is not None:
             return [current]
-        else:
-            return []
+        return []
 
     def get_nested_value(self, obj, attr_path):
         """Get a single nested value (not a list) from attribute path"""
@@ -1049,7 +1052,7 @@ class BaseReporter:
     def __init__(self, analyzer):
         self.analyzer = analyzer
 
-    def _traverse_nodes(self, nodes, root_node):
+    def _traverse_nodes(self, root_node):
         """Traverse nodes in depth-first order yielding each node."""
         parents = [{"node": root_node, "children": root_node.children.copy()}]
         while parents:
@@ -1070,8 +1073,7 @@ class CSVReporter(BaseReporter):
         """Generate CSV report (list of lists format)."""
         if self.analyzer.group_by_attr:
             return self._generate_grouped()
-        else:
-            return self._generate_standard()
+        return self._generate_standard()
 
     def _generate_standard(self):
         """Generate standard (non-grouped) CSV report."""
@@ -1079,7 +1081,7 @@ class CSVReporter(BaseReporter):
         header.extend([f"top_value{i+1}" for i in range(self.analyzer.top_value_count)])
 
         rows = []
-        for node in self._traverse_nodes(self.analyzer.nodes, self.analyzer.root_node):
+        for node in self._traverse_nodes(self.analyzer.root_node):
             attr_code = node.node_desc
             attr_type = node.node_type
             record_cnt = node.record_count
@@ -1119,7 +1121,7 @@ class CSVReporter(BaseReporter):
             group_nodes = group_data["nodes"]
             group_record_count = group_data["record_count"]
 
-            for node in self._traverse_nodes(group_nodes, group_nodes["root"]):
+            for node in self._traverse_nodes(group_nodes["root"]):
                 attr_code = node.node_desc
                 attr_type = node.node_type
                 record_cnt = node.record_count
@@ -1283,8 +1285,7 @@ class MarkdownReporter(BaseReporter):
         """Generate markdown report."""
         if self.analyzer.group_by_attr:
             return self._generate_grouped()
-        else:
-            return self._generate_standard()
+        return self._generate_standard()
 
     def _generate_standard(self):
         """Generate standard (single-schema) markdown format."""
@@ -1404,7 +1405,7 @@ class MarkdownReporter(BaseReporter):
 
         # Traverse nodes
         row_num = 0
-        for node in self._traverse_nodes(self.analyzer.nodes, self.analyzer.root_node):
+        for node in self._traverse_nodes(self.analyzer.root_node):
             row_num += 1
             field_name = node.node_desc
             field_type = node.node_type
@@ -1510,7 +1511,7 @@ class MarkdownReporter(BaseReporter):
 
             # Traverse nodes for this group
             row_num = 0
-            for node in self._traverse_nodes(group_nodes, group_nodes["root"]):
+            for node in self._traverse_nodes(group_nodes["root"]):
                 row_num += 1
                 field_name = node.node_desc
                 field_type = node.node_type
@@ -1560,13 +1561,11 @@ class EnumerationReporter(BaseReporter):
         """Generate enumeration report based on config type."""
         if self.analyzer.is_pivot_enumeration:
             return self._generate_pivot_enumeration()
-        elif not self.analyzer.enumerate_attrs or not self.analyzer.enumeration_stats:
+        if not self.analyzer.enumerate_attrs or not self.analyzer.enumeration_stats:
             return [["No enumeration data available"]]
-        else:
-            if self.analyzer.group_by_attr:
-                return self._generate_grouped_enumeration()
-            else:
-                return self._generate_standard_enumeration()
+        if self.analyzer.group_by_attr:
+            return self._generate_grouped_enumeration()
+        return self._generate_standard_enumeration()
 
     def _generate_standard_enumeration(self):
         """Generate standard (non-grouped) enumeration report."""
@@ -1790,7 +1789,7 @@ class CodeReporter(BaseReporter):
     def _generate_standard(self):
         """Generate standard (non-grouped) Python mapping code rows."""
         rows = []
-        for node in self._traverse_nodes(self.analyzer.nodes, self.analyzer.root_node):
+        for node in self._traverse_nodes(self.analyzer.root_node):
             rows.extend(self._generate_node_code(node, self.analyzer.record_count))
         return rows
 
@@ -1814,7 +1813,7 @@ class CodeReporter(BaseReporter):
             group_root = self.analyzer.groups[group_name]["nodes"].get("root")
             if not group_root:
                 continue
-            for node in self._traverse_nodes(self.analyzer.groups[group_name]["nodes"], group_root):
+            for node in self._traverse_nodes(group_root):
                 if node.node_desc not in merged_nodes:
                     merged_nodes[node.node_desc] = {
                         "node": node,
@@ -1839,7 +1838,7 @@ class CodeReporter(BaseReporter):
         if group_names:
             first_root = self.analyzer.groups[group_names[0]]["nodes"].get("root")
             if first_root:
-                for node in self._traverse_nodes(self.analyzer.groups[group_names[0]]["nodes"], first_root):
+                for node in self._traverse_nodes(first_root):
                     if node.node_desc in merged_nodes:
                         self._emit_node(rows, merged_nodes[node.node_desc], group_names)
                         processed_keys.add(node.node_desc)
@@ -1957,17 +1956,17 @@ def create_python_script(code_rows, file_type, encoding):
                 elif file_type.startswith("json"):
                     script_rows.append(indent + f'input_file = open(file_name, "r", encoding="{encoding}")')
                 elif file_type == "xml":
-                    script_rows.append(indent + f"tree = ET.parse(file_name)")
-                    script_rows.append(indent + f"root = tree.getroot()")
-                    script_rows.append(indent + f"reader = [element_to_dict(child) for child in root]")
+                    script_rows.append(indent + "tree = ET.parse(file_name)")
+                    script_rows.append(indent + "root = tree.getroot()")
+                    script_rows.append(indent + "reader = [element_to_dict(child) for child in root]")
                 else:
                     script_rows.append(indent + f'input_file = open(file_name, "r", encoding="{encoding}")')
                     script_rows.append(
                         indent
-                        + f'csv_dialect = csv.Sniffer().sniff(input_file.read(2048), delimiters=[",", ";", "|", "\\t"])'
+                        + 'csv_dialect = csv.Sniffer().sniff(input_file.read(2048), delimiters=[",", ";", "|", "\\t"])'
                     )
-                    script_rows.append(indent + f"input_file.seek(0)")
-                    script_rows.append(indent + f"reader = csv.DictReader(input_file, dialect=csv_dialect)")
+                    script_rows.append(indent + "input_file.seek(0)")
+                    script_rows.append(indent + "reader = csv.DictReader(input_file, dialect=csv_dialect)")
             elif line.strip().startswith(mapper_call) and file_type.startswith("json"):
                 script_rows.append(line.replace("(row)", "(json.loads(row))"))
             elif line.strip().startswith(file_loop) and file_type.startswith("json"):

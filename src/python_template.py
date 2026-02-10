@@ -168,12 +168,12 @@ if __name__ == "__main__":
                 if input_row_count < args.start_line:
                     continue
 
-                for json_data in map_record(row):
+                for mapped_data in map_record(row):
                     if output_file:
-                        output_file.write(json.dumps(json_data) + "\n")
+                        output_file.write(json.dumps(mapped_data) + "\n")
                     else:
                         print(f"--- Record {input_row_count} ---")
-                        print(json.dumps(json_data, indent=4))
+                        print(json.dumps(mapped_data, indent=4))
                         response = input("Press Enter for next, 'r' to show raw source (Ctrl+C to abort): ")
                         if response.lower() == "r":
                             print("\nSource:")
