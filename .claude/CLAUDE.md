@@ -40,7 +40,7 @@ mypy src/
 
 - Line length: 120 characters
 - Use black for formatting with isort profile
-- Python 3.10+ required
+- Python 3.11+ required
 - Follow pylint rules defined in pyproject.toml (some rules disabled: `consider-using-with`, `invalid-name`, `line-too-long`, `too-many-branches`, `too-many-lines`, `too-many-statements`, `unspecified-encoding`)
 
 ## Project Structure
@@ -53,7 +53,7 @@ mypy src/
 
 Pull requests trigger:
 
-- Pylint across Python 3.10, 3.11, 3.12, 3.13
+- Pylint across Python 3.11, 3.12, 3.13
 - Spellcheck via cspell
 
 ## Commit Guidelines
